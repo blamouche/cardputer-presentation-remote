@@ -26,7 +26,7 @@
 // On-board WS2812 RGB LED
 #define LED_PIN        21
 #define LED_NUM        1
-#define LED_BRIGHTNESS 200
+#define LED_BRIGHTNESS 255
 #define LED_FLASH_MS   180
 #define LED_REFRESH_MS 100
 
