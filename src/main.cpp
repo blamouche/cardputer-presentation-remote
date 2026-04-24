@@ -60,7 +60,10 @@ uint32_t  lastDrawMs  = 0;
 uint32_t ledFlashStartMs = 0;
 uint32_t lastLedRefreshMs = 0;
 
-Adafruit_NeoPixel led(LED_NUM, LED_PIN, NEO_GRB + NEO_KHZ800);
+// The Cardputer's on-board LED is an SK6812 RGBW, not a WS2812B RGB.
+// Using a 3-channel GRB driver sends only 24 of the 32 expected bits,
+// which leaves the chip waiting and the LED visibly under-driven.
+Adafruit_NeoPixel led(LED_NUM, LED_PIN, NEO_GRBW + NEO_KHZ800);
 
 // 16x16 pixel-art critter. Two variants: happy (connected) and sad (waiting).
 // Letters map to colors via pixelColor():
@@ -143,7 +146,7 @@ void updateLed() {
     } else {
         r = 255; g = 0;   b = 0;
     }
-    led.setPixelColor(0, r, g, b);
+    led.setPixelColor(0, r, g, b, 0); // w=0 to keep colors pure
     led.show();
 }
 
@@ -375,7 +378,7 @@ void setup() {
 
     led.begin();
     led.setBrightness(LED_BRIGHTNESS);
-    led.setPixelColor(0, 255, 0, 0);
+    led.setPixelColor(0, 255, 0, 0, 0);
     led.show();
 
     bleKeyboard = new BleKeyboard(
