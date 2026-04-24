@@ -16,12 +16,19 @@
 #undef KEY_ENTER
 
 #include <BleKeyboard.h>
+#include <FastLED.h>
 
 // SD pins on Cardputer (ADV uses the same pinout as the original)
 #define SD_SCK  40
 #define SD_MISO 39
 #define SD_MOSI 14
 #define SD_CS   12
+
+// On-board WS2812 RGB LED
+#define LED_PIN        21
+#define LED_NUM        1
+#define LED_BRIGHTNESS 40
+#define LED_FLASH_MS   180
 
 #define CONFIG_PATH "/cardputer-presentation-remote.json"
 
@@ -48,6 +55,10 @@ enum Direction { DIR_NONE, DIR_LEFT, DIR_RIGHT, DIR_UP, DIR_DOWN };
 Direction currentDir = DIR_NONE;
 uint32_t  pressTimeMs = 0;
 uint32_t  lastDrawMs  = 0;
+
+CRGB     leds[LED_NUM];
+CRGB     prevLedColor = CRGB::Black;
+uint32_t ledFlashStartMs = 0;
 
 // 16x16 pixel-art critter. Two variants: happy (connected) and sad (waiting).
 // Letters map to colors via pixelColor():
@@ -114,6 +125,22 @@ const char* dirLabel(Direction d) {
         case DIR_UP:    return "UP";
         case DIR_DOWN:  return "DOWN";
         default:        return "";
+    }
+}
+
+void updateLed() {
+    CRGB target;
+    if (millis() - ledFlashStartMs < LED_FLASH_MS) {
+        target = CRGB::Blue;
+    } else if (bleKeyboard && bleKeyboard->isConnected()) {
+        target = CRGB::Green;
+    } else {
+        target = CRGB::Red;
+    }
+    if (target != prevLedColor) {
+        leds[0] = target;
+        FastLED.show();
+        prevLedColor = target;
     }
 }
 
@@ -324,6 +351,7 @@ void sendKey(uint8_t code, Direction dir, const char* /*label*/) {
     bleKeyboard->releaseAll();
     currentDir = dir;
     pressTimeMs = millis();
+    ledFlashStartMs = pressTimeMs;
 }
 
 void setup() {
@@ -341,6 +369,12 @@ void setup() {
     COL_INNER = COL_CHEEK;
 
     canvas.createSprite(240, 135);
+
+    FastLED.addLeds<WS2812B, LED_PIN, GRB>(leds, LED_NUM);
+    FastLED.setBrightness(LED_BRIGHTNESS);
+    leds[0] = CRGB::Red;
+    FastLED.show();
+    prevLedColor = CRGB::Red;
 
     bleKeyboard = new BleKeyboard(
         config.deviceName.c_str(),
@@ -378,6 +412,8 @@ void loop() {
         lastDrawMs = now;
         drawScene();
     }
+
+    updateLed();
 
     delay(5);
 }
