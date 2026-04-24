@@ -1,0 +1,10 @@
+{
+  "device_name": "Cardputer Remote",
+  "manufacturer": "M5Stack",
+  "keys": {
+    "left":  "LEFT_ARROW",
+    "right": "RIGHT_ARROW",
+    "up":    "UP_ARROW",
+    "down":  "DOWN_ARROW"
+  }
+}
