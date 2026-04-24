@@ -29,11 +29,15 @@ pio run                 # build
 pio run -t upload       # flash over USB
 ```
 
-A ready-to-flash merged binary (`firmware.bin`) is also produced at the project root by `scripts/merge_bin.py`. A prebuilt binary (`cardputer-presentation-remote.bin`) is shipped in the repo for users who just want to flash without installing PlatformIO:
+A ready-to-flash merged binary (`firmware.bin`) is also produced at the project root by `scripts/merge_bin.py`.
+
+If you don't want to install PlatformIO, download a prebuilt `.bin` from the [Releases page](https://github.com/blamouche/cardputer-presentation-remote/releases) (the file is named `presentation-remote-<VERSION>.bin`), then:
 
 ```bash
-esptool.py --chip esp32s3 --port /dev/cu.usbmodem* write_flash 0x0 cardputer-presentation-remote.bin
+esptool.py --chip esp32s3 --port /dev/cu.usbmodem* write_flash 0x0 presentation-remote-<VERSION>.bin
 ```
+
+The repo also contains a checked-in `cardputer-presentation-remote.bin` at its root as a convenience, but it is not updated automatically — prefer the Releases page for the latest version.
 
 ## SD-card configuration
 
@@ -96,6 +100,8 @@ The project uses the NimBLE fork [`wakwak-koba/ESP32-NimBLE-Keyboard`](https://g
 At the time of writing, the NimBLE fork's `BleKeyboard.h` is missing `#include <functional>`. If compilation fails with `'std::function' does not name a template type`, add that include manually at the top of `.pio/libdeps/cardputer-adv/ESP32 BLE Keyboard/src/BleKeyboard.h`. The CI workflow (`.github/workflows/release.yml`) applies this patch automatically.
 
 ## Releases
+
+Prebuilt binaries are published on the [Releases page](https://github.com/blamouche/cardputer-presentation-remote/releases). Each release ships a single asset, `presentation-remote-<TAG>.bin`, ready to flash with `esptool.py` (see [Build and flash](#build-and-flash)).
 
 Pushing a tag triggers the release workflow which builds the firmware and publishes a GitHub release with `presentation-remote-<TAG>.bin` attached:
 
