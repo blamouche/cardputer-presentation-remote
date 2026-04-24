@@ -16,7 +16,15 @@
 #undef KEY_ENTER
 
 #include <BleKeyboard.h>
-#include <Adafruit_NeoPixel.h>
+
+// Force FastLED to use the ESP-IDF built-in RMT driver. Without these
+// defines FastLED's internal RMT driver silently no-ops on ESP32-S3
+// with arduino-esp32 3.x, leaving the LED dark or faintly lit.
+// (Same configuration used by the pr3y/Bruce firmware.)
+#define FASTLED_RMT_BUILTIN_DRIVER 1
+#define FASTLED_RMT_MAX_CHANNELS   1
+#define FASTLED_ESP32_RMT_CHANNEL_0 0
+#include <FastLED.h>
 
 // SD pins on Cardputer (ADV uses the same pinout as the original)
 #define SD_SCK  40
@@ -60,10 +68,7 @@ uint32_t  lastDrawMs  = 0;
 uint32_t ledFlashStartMs = 0;
 uint32_t lastLedRefreshMs = 0;
 
-// The Cardputer's on-board LED is an SK6812 RGBW, not a WS2812B RGB.
-// Using a 3-channel GRB driver sends only 24 of the 32 expected bits,
-// which leaves the chip waiting and the LED visibly under-driven.
-Adafruit_NeoPixel led(LED_NUM, LED_PIN, NEO_GRBW + NEO_KHZ800);
+CRGB leds[LED_NUM];
 
 // 16x16 pixel-art critter. Two variants: happy (connected) and sad (waiting).
 // Letters map to colors via pixelColor():
@@ -138,16 +143,16 @@ void updateLed() {
     if (now - lastLedRefreshMs < LED_REFRESH_MS) return;
     lastLedRefreshMs = now;
 
-    uint8_t r, g, b;
+    CRGB target;
     if (now - ledFlashStartMs < LED_FLASH_MS) {
-        r = 0;   g = 0;   b = 255;
+        target = CRGB::Blue;
     } else if (bleKeyboard && bleKeyboard->isConnected()) {
-        r = 0;   g = 255; b = 0;
+        target = CRGB::Green;
     } else {
-        r = 255; g = 0;   b = 0;
+        target = CRGB::Red;
     }
-    led.setPixelColor(0, r, g, b, 0); // w=0 to keep colors pure
-    led.show();
+    leds[0] = target;
+    FastLED.show();
 }
 
 // Map a human-readable key name (from config.json) to a BleKeyboard code.
@@ -376,10 +381,12 @@ void setup() {
 
     canvas.createSprite(240, 135);
 
-    led.begin();
-    led.setBrightness(LED_BRIGHTNESS);
-    led.setPixelColor(0, 255, 0, 0, 0);
-    led.show();
+    // Matches pr3y/Bruce init for the Cardputer on-board LED:
+    // SK6812 chip, GRB order, single pixel on GPIO 21.
+    FastLED.addLeds<SK6812, LED_PIN, GRB>(leds, LED_NUM);
+    FastLED.setBrightness(LED_BRIGHTNESS);
+    leds[0] = CRGB::Red;
+    FastLED.show();
 
     bleKeyboard = new BleKeyboard(
         config.deviceName.c_str(),
