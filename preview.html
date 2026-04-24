@@ -15,58 +15,33 @@
     flex-wrap: wrap;
   }
   h1 { font-size: 16px; font-weight: 600; margin: 0 0 12px; color: #aaa; }
-  .stage {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
+  .stage { display: flex; flex-direction: column; gap: 8px; }
   canvas {
     image-rendering: pixelated;
     background: #000;
     border: 2px solid #333;
     box-shadow: 0 8px 32px rgba(0,0,0,0.5);
   }
-  .meta { font-size: 11px; color: #666; }
-  .controls {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    min-width: 260px;
-  }
+  .meta { font-size: 11px; color: #666; max-width: 720px; }
+  .controls { display: flex; flex-direction: column; gap: 12px; min-width: 260px; }
   .controls label {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    font-size: 12px;
-    color: #999;
+    display: flex; flex-direction: column; gap: 4px;
+    font-size: 12px; color: #999;
   }
   .controls input[type="text"], .controls select {
-    background: #111;
-    color: #eee;
-    border: 1px solid #333;
-    padding: 6px 8px;
-    border-radius: 4px;
-    font: inherit;
+    background: #111; color: #eee; border: 1px solid #333;
+    padding: 6px 8px; border-radius: 4px; font: inherit;
   }
-  .row { display: flex; gap: 12px; }
-  .row > label { flex: 1; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .row > * { flex: 1 1 0; }
   button {
-    background: #2a2a2a;
-    color: #ddd;
-    border: 1px solid #444;
-    padding: 8px 12px;
-    border-radius: 4px;
-    cursor: pointer;
-    font: inherit;
+    background: #2a2a2a; color: #ddd; border: 1px solid #444;
+    padding: 8px 12px; border-radius: 4px; cursor: pointer; font: inherit;
   }
   button:hover { background: #333; }
   kbd {
-    background: #111;
-    border: 1px solid #444;
-    border-radius: 3px;
-    padding: 1px 5px;
-    font-size: 11px;
-    font-family: ui-monospace, monospace;
+    background: #111; border: 1px solid #444; border-radius: 3px;
+    padding: 1px 5px; font-size: 11px; font-family: ui-monospace, monospace;
   }
 </style>
 </head>
@@ -75,46 +50,32 @@
     <h1>Slides Remote — UI preview (240×135, 3×)</h1>
     <canvas id="screen" width="720" height="405"></canvas>
     <div class="meta">
-      Approximates <code>drawUI()</code> in <code>src/main.cpp</code>. Click the
-      canvas or press <kbd>,</kbd> <kbd>.</kbd> <kbd>;</kbd> <kbd>/</kbd> to
-      simulate key presses.
+      Header: device name (left) + BLE state (right). Middle: pixel-art
+      creature that hops in the direction of the last key, with its eyes
+      always following that direction. Footer: the currently selected key.
+      Press <kbd>,</kbd> <kbd>.</kbd> <kbd>;</kbd> <kbd>/</kbd> to trigger.
     </div>
   </div>
 
   <div class="controls">
     <h1>State</h1>
-
     <label>Device name
       <input type="text" id="deviceName" value="Slides Remote" />
     </label>
-
     <label>BLE state
       <select id="bleState">
         <option value="CONNECTED">CONNECTED</option>
         <option value="WAITING" selected>WAITING</option>
       </select>
     </label>
-
-    <label>Config status
-      <select id="configStatus">
-        <option value="loaded">loaded</option>
-        <option value="created">created</option>
-        <option value="no SD">no SD</option>
-        <option value="defaults" selected>defaults</option>
-        <option value="json err: IncompleteInput">json err: IncompleteInput</option>
-      </select>
-    </label>
-
-    <label>Last key
-      <select id="lastKey">
-        <option value="-" selected>-</option>
-        <option value="LEFT">LEFT</option>
-        <option value="RIGHT">RIGHT</option>
-        <option value="UP">UP</option>
-        <option value="DOWN">DOWN</option>
-      </select>
-    </label>
-
+    <div class="row">
+      <button data-key="LEFT">← LEFT</button>
+      <button data-key="RIGHT">RIGHT →</button>
+    </div>
+    <div class="row">
+      <button data-key="UP">↑ UP</button>
+      <button data-key="DOWN">↓ DOWN</button>
+    </div>
     <div class="row">
       <button id="connectBtn">Toggle BLE</button>
       <button id="resetBtn">Reset</button>
@@ -122,9 +83,6 @@
   </div>
 
 <script>
-// Mirrors the relevant subset of M5GFX/Adafruit GFX drawing calls used by
-// drawUI() in src/main.cpp. Renders into a 3x-scaled 240x135 canvas.
-
 const SCALE = 3;
 const NATIVE_W = 240;
 const NATIVE_H = 135;
@@ -135,7 +93,16 @@ const COLORS = {
   GREEN:    "#00fc00",
   YELLOW:   "#ffe000",
   DARKGREY: "#787878",
+  BODY:     "#d8a25c",
+  EYE:      "#ffffff",
+  PUPIL:    "#111111",
+  MOUTH:    "#4a2a0a",
+  CHEEK:    "#ff9ab1",
+  INNER_EAR:"#ff9ab1",
 };
+
+const CHAR_W = 6;
+const CHAR_H = 8;
 
 class Screen {
   constructor(canvas) {
@@ -145,134 +112,263 @@ class Screen {
     this.ctx.scale(SCALE, SCALE);
     this.reset();
   }
-  reset() {
-    this.cursorX = 0;
-    this.cursorY = 0;
-    this.textSize = 1;
-    this.color = COLORS.WHITE;
+  reset() { this.cursorX = 0; this.cursorY = 0; this.textSize = 1; this.color = COLORS.WHITE; }
+  fillScreen(c) { this.ctx.fillStyle = c; this.ctx.fillRect(0, 0, NATIVE_W, NATIVE_H); this.reset(); }
+  drawFastHLine(x, y, w, c) { this.ctx.fillStyle = c; this.ctx.fillRect(x, y, w, 1); }
+  _pixel(x, y, c) { this.ctx.fillStyle = c; this.ctx.fillRect(x, y, 1, 1); }
+  fillRect(x, y, w, h, c) { this.ctx.fillStyle = c; this.ctx.fillRect(x, y, w, h); }
+  drawCircle(cx, cy, r, c) {
+    let x = 0, y = r, d = 3 - 2 * r;
+    const plot = (px, py) => this._pixel(px, py, c);
+    while (y >= x) {
+      plot(cx + x, cy + y); plot(cx - x, cy + y);
+      plot(cx + x, cy - y); plot(cx - x, cy - y);
+      plot(cx + y, cy + x); plot(cx - y, cy + x);
+      plot(cx + y, cy - x); plot(cx - y, cy - x);
+      x++;
+      if (d > 0) { y--; d = d + 4 * (x - y) + 10; } else { d = d + 4 * x + 6; }
+    }
   }
-  fillScreen(c) {
-    this.ctx.fillStyle = c;
-    this.ctx.fillRect(0, 0, NATIVE_W, NATIVE_H);
-    this.reset();
+  fillCircle(cx, cy, r, c) {
+    for (let dy = -r; dy <= r; dy++)
+      for (let dx = -r; dx <= r; dx++)
+        if (dx * dx + dy * dy <= r * r) this._pixel(cx + dx, cy + dy, c);
+  }
+  drawLine(x0, y0, x1, y1, c) {
+    let dx = Math.abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
+    let dy = -Math.abs(y1 - y0), sy = y0 < y1 ? 1 : -1;
+    let err = dx + dy;
+    for (;;) {
+      this._pixel(x0, y0, c);
+      if (x0 === x1 && y0 === y1) break;
+      const e2 = 2 * err;
+      if (e2 >= dy) { err += dy; x0 += sx; }
+      if (e2 <= dx) { err += dx; y0 += sy; }
+    }
   }
   setCursor(x, y) { this.cursorX = x; this.cursorY = y; }
   setTextSize(s) { this.textSize = s; }
   setTextColor(c) { this.color = c; }
   print(str) {
-    // GFX classic font: 5x7 glyphs inside a 6x8 cell (with 1px spacing).
-    // We render a close-enough monospace approximation.
-    const cellW = 6 * this.textSize;
-    const cellH = 8 * this.textSize;
-    const fontPx = 7 * this.textSize; // slightly under cell height for baseline
+    const cellW = CHAR_W * this.textSize;
+    const cellH = CHAR_H * this.textSize;
+    const fontPx = 7 * this.textSize;
     this.ctx.fillStyle = this.color;
     this.ctx.textBaseline = "top";
     this.ctx.font = `${fontPx}px ui-monospace, "SF Mono", "Menlo", "Consolas", monospace`;
     for (const ch of String(str)) {
-      if (ch === "\n") {
-        this.cursorX = 0;
-        this.cursorY += cellH;
-        continue;
-      }
+      if (ch === "\n") { this.cursorX = 0; this.cursorY += cellH; continue; }
       this.ctx.fillText(ch, this.cursorX, this.cursorY);
       this.cursorX += cellW;
     }
   }
 }
 
+// Pixel-art critter, 16x16. Two variants: happy (connected) and sad (waiting).
+// Only rows 10-11 (mouth) differ — smile vs frown.
+// .=transparent  B=body  W=eye white  M=mouth/nose  C=cheek  E=inner ear
+const PET_HAPPY = [
+  "...B........B...",
+  "..BBB......BBB..",
+  ".BEBBB....BBEBB.",
+  "BBBBBBBBBBBBBBB.",
+  "BBBBBBBBBBBBBBB.",
+  "BBWWWBBBBBWWWBB.",
+  "BBWWWBBBBBWWWBB.",
+  "BBWWWBBBBBWWWBB.",
+  "BBBBBBBBBBBBBBB.",
+  "BCBBBBBMBBBBBCB.",
+  "BBBBBMBBBMBBBBB.",
+  "BBBBBBMMMBBBBBB.",
+  "BBBBBBBBBBBBBBB.",
+  ".BBBBBBBBBBBBB..",
+  "..BBBBBBBBBBB...",
+  "................",
+];
+const PET_SAD = [
+  "...B........B...",
+  "..BBB......BBB..",
+  ".BEBBB....BBEBB.",
+  "BBBBBBBBBBBBBBB.",
+  "BBBBBBBBBBBBBBB.",
+  "BBWWWBBBBBWWWBB.",
+  "BBWWWBBBBBWWWBB.",
+  "BBWWWBBBBBWWWBB.",
+  "BBBBBBBBBBBBBBB.",
+  "BCBBBBBMBBBBBCB.",
+  "BBBBBBMMMBBBBBB.",
+  "BBBBBMBBBMBBBBB.",
+  "BBBBBBBBBBBBBBB.",
+  ".BBBBBBBBBBBBB..",
+  "..BBBBBBBBBBB...",
+  "................",
+];
+const PALETTE = {
+  B: COLORS.BODY, W: COLORS.EYE, M: COLORS.MOUTH,
+  C: COLORS.CHEEK, E: COLORS.INNER_EAR,
+};
+const PET_W = 16, PET_H = 16;
+const PET_SCALE = 3;
+
+// Pupil anchor: center of the 3x3 eye white. 1x1 pupil shifts by ±1 in the
+// selected direction.
+const EYE_L = { cx: 3, cy: 6 };
+const EYE_R = { cx: 11, cy: 6 };
+
 const canvas = document.getElementById("screen");
 const screen = new Screen(canvas);
+
+const HEADER_Y = 1;
+const DIVIDER_Y = 11;
+const FOOTER_Y = 126;
+const ANIM_CENTER = { x: 120, y: 72 };
 
 const state = {
   deviceName: "Slides Remote",
   connected: false,
-  configStatus: "defaults",
-  lastKey: "-",
+  direction: null, // "LEFT"|"RIGHT"|"UP"|"DOWN"|null
+  pressTimeMs: -10000,
 };
 
-const CONFIG_PATH = "/cardputer-presentation-remote.json";
+function hopOffset(now) {
+  if (!state.direction) return { x: 0, y: 0 };
+  const elapsed = now - state.pressTimeMs;
+  const duration = 320;
+  if (elapsed > duration) return { x: 0, y: 0 };
+  // Ease-out: magnitude decays from 7 → 0
+  const t = elapsed / duration;
+  const mag = Math.round(7 * (1 - t) * (1 - t));
+  switch (state.direction) {
+    case "LEFT":  return { x: -mag, y: 0 };
+    case "RIGHT": return { x:  mag, y: 0 };
+    case "UP":    return { x: 0, y: -mag };
+    case "DOWN":  return { x: 0, y:  mag };
+  }
+  return { x: 0, y: 0 };
+}
 
-function drawUI() {
-  const d = screen;
-  d.fillScreen(COLORS.BLACK);
+function idleBob(now) {
+  // Breathing: 1 pixel up/down cycling every ~1.4s
+  const phase = (now % 1400) / 1400;
+  return { x: 0, y: phase < 0.5 ? 0 : -1 };
+}
 
-  d.setTextColor(COLORS.WHITE);
-  d.setTextSize(2);
-  d.setCursor(5, 5);
-  d.print(state.deviceName);
+function drawHeader() {
+  screen.setTextSize(1);
+  screen.setTextColor(COLORS.WHITE);
+  screen.setCursor(0, HEADER_Y);
+  screen.print(state.deviceName);
 
-  d.setTextSize(1);
-  d.setCursor(5, 32);
-  d.setTextColor(state.connected ? COLORS.GREEN : COLORS.YELLOW);
-  d.print(`BLE: ${state.connected ? "CONNECTED" : "WAITING"}`);
+  const statusStr = state.connected ? "CONNECTED" : "WAITING";
+  const ICON_W = 7, ICON_PAD = 2;
+  const totalW = ICON_W + ICON_PAD + CHAR_W * statusStr.length;
+  const startX = NATIVE_W - totalW;
+  const cx = startX + (ICON_W >> 1);
+  const cy = HEADER_Y + 3;
+  const color = state.connected ? COLORS.GREEN : COLORS.YELLOW;
+  if (state.connected) {
+    screen.fillCircle(cx, cy, 3, color);
+  } else {
+    screen.drawCircle(cx, cy, 3, color);
+    screen.drawLine(cx, cy, cx,     cy - 2, color);
+    screen.drawLine(cx, cy, cx + 2, cy,     color);
+  }
+  screen.setTextColor(color);
+  screen.setCursor(startX + ICON_W + ICON_PAD, HEADER_Y);
+  screen.print(statusStr);
+}
 
-  d.setTextColor(COLORS.WHITE);
-  d.setCursor(5, 48);
-  d.print(`Config: ${state.configStatus}`);
+function drawPet(now) {
+  const hop = hopOffset(now);
+  const bob = idleBob(now);
+  const renderW = PET_W * PET_SCALE;
+  const renderH = PET_H * PET_SCALE;
+  const ox = Math.round(ANIM_CENTER.x - renderW / 2) + hop.x;
+  const oy = Math.round(ANIM_CENTER.y - renderH / 2) + hop.y + bob.y;
 
-  d.setCursor(5, 64);
-  d.print(`Last: ${state.lastKey}`);
+  const sprite = state.connected ? PET_HAPPY : PET_SAD;
+  for (let row = 0; row < PET_H; row++) {
+    const line = sprite[row];
+    for (let col = 0; col < PET_W; col++) {
+      const ch = line[col];
+      if (ch === ".") continue;
+      screen.fillRect(ox + col * PET_SCALE, oy + row * PET_SCALE,
+                      PET_SCALE, PET_SCALE, PALETTE[ch]);
+    }
+  }
 
-  d.setTextColor(COLORS.DARKGREY);
-  d.setCursor(5, 100);
-  d.print(",  .  ;  /   =>  L  D  U  R");
-  d.setCursor(5, 114);
-  d.print(`Edit ${CONFIG_PATH} on SD`);
+  // Pupils follow the last selected direction
+  let dx = 0, dy = 0;
+  switch (state.direction) {
+    case "LEFT":  dx = -1; break;
+    case "RIGHT": dx =  1; break;
+    case "UP":    dy = -1; break;
+    case "DOWN":  dy =  1; break;
+  }
+  const plotPupil = (eye) => {
+    screen.fillRect(ox + (eye.cx + dx) * PET_SCALE,
+                    oy + (eye.cy + dy) * PET_SCALE,
+                    PET_SCALE, PET_SCALE, COLORS.PUPIL);
+  };
+  plotPupil(EYE_L);
+  plotPupil(EYE_R);
+}
+
+function drawFooter() {
+  if (!state.direction) return;
+  screen.setTextSize(1);
+  screen.setTextColor(COLORS.DARKGREY);
+  const label = state.direction;
+  const x = Math.floor((NATIVE_W - CHAR_W * label.length) / 2);
+  screen.setCursor(x, FOOTER_Y);
+  screen.print(label);
+}
+
+function render(now) {
+  screen.fillScreen(COLORS.BLACK);
+  drawHeader();
+  screen.drawFastHLine(0, DIVIDER_Y, NATIVE_W, COLORS.DARKGREY);
+  drawPet(now);
+  drawFooter();
+  requestAnimationFrame(render);
 }
 
 // Controls
 const $ = (id) => document.getElementById(id);
 
-$("deviceName").addEventListener("input", (e) => {
-  state.deviceName = e.target.value;
-  drawUI();
-});
+$("deviceName").addEventListener("input", (e) => { state.deviceName = e.target.value; });
+$("bleState").addEventListener("change", (e) => { state.connected = e.target.value === "CONNECTED"; });
 
-$("bleState").addEventListener("change", (e) => {
-  state.connected = e.target.value === "CONNECTED";
-  drawUI();
+function simulatePress(label) {
+  state.direction = label;
+  state.pressTimeMs = performance.now();
+}
+document.querySelectorAll("button[data-key]").forEach((btn) => {
+  btn.addEventListener("click", () => simulatePress(btn.dataset.key));
 });
-
-$("configStatus").addEventListener("change", (e) => {
-  state.configStatus = e.target.value;
-  drawUI();
-});
-
-$("lastKey").addEventListener("change", (e) => {
-  state.lastKey = e.target.value;
-  drawUI();
-});
-
 $("connectBtn").addEventListener("click", () => {
   state.connected = !state.connected;
   $("bleState").value = state.connected ? "CONNECTED" : "WAITING";
-  drawUI();
 });
-
 $("resetBtn").addEventListener("click", () => {
   state.deviceName = "Slides Remote";
   state.connected = false;
-  state.configStatus = "defaults";
-  state.lastKey = "-";
+  state.direction = null;
+  state.pressTimeMs = -10000;
   $("deviceName").value = state.deviceName;
   $("bleState").value = "WAITING";
-  $("configStatus").value = "defaults";
-  $("lastKey").value = "-";
-  drawUI();
 });
 
-// Keyboard shortcut: , . ; /  simulate a key press (same mapping as firmware)
 const keyMap = { ",": "LEFT", ".": "DOWN", ";": "UP", "/": "RIGHT" };
 window.addEventListener("keydown", (e) => {
   if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT") return;
   const label = keyMap[e.key];
   if (!label) return;
-  state.lastKey = label;
-  $("lastKey").value = label;
-  drawUI();
+  e.preventDefault();
+  simulatePress(label);
 });
 
-drawUI();
+requestAnimationFrame(render);
 </script>
 </body>
 </html>

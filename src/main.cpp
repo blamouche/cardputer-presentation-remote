@@ -42,8 +42,80 @@ struct Config {
 Config config;
 BleKeyboard* bleKeyboard = nullptr;
 String configStatus = "defaults";
-String lastKey      = "-";
 bool   prevConnected = false;
+
+enum Direction { DIR_NONE, DIR_LEFT, DIR_RIGHT, DIR_UP, DIR_DOWN };
+Direction currentDir = DIR_NONE;
+uint32_t  pressTimeMs = 0;
+uint32_t  lastDrawMs  = 0;
+
+// 16x16 pixel-art critter. Two variants: happy (connected) and sad (waiting).
+// Letters map to colors via pixelColor():
+// .=transparent  B=body  W=eye white  M=mouth/nose  C=cheek  E=inner ear
+static const char* PET_HAPPY[16] = {
+    "...B........B...",
+    "..BBB......BBB..",
+    ".BEBBB....BBEBB.",
+    "BBBBBBBBBBBBBBB.",
+    "BBBBBBBBBBBBBBB.",
+    "BBWWWBBBBBWWWBB.",
+    "BBWWWBBBBBWWWBB.",
+    "BBWWWBBBBBWWWBB.",
+    "BBBBBBBBBBBBBBB.",
+    "BCBBBBBMBBBBBCB.",
+    "BBBBBMBBBMBBBBB.",
+    "BBBBBBMMMBBBBBB.",
+    "BBBBBBBBBBBBBBB.",
+    ".BBBBBBBBBBBBB..",
+    "..BBBBBBBBBBB...",
+    "................",
+};
+static const char* PET_SAD[16] = {
+    "...B........B...",
+    "..BBB......BBB..",
+    ".BEBBB....BBEBB.",
+    "BBBBBBBBBBBBBBB.",
+    "BBBBBBBBBBBBBBB.",
+    "BBWWWBBBBBWWWBB.",
+    "BBWWWBBBBBWWWBB.",
+    "BBWWWBBBBBWWWBB.",
+    "BBBBBBBBBBBBBBB.",
+    "BCBBBBBMBBBBBCB.",
+    "BBBBBBMMMBBBBBB.",
+    "BBBBBMBBBMBBBBB.",
+    "BBBBBBBBBBBBBBB.",
+    ".BBBBBBBBBBBBB..",
+    "..BBBBBBBBBBB...",
+    "................",
+};
+static const int PET_W = 16;
+static const int PET_H = 16;
+static const int PET_SCALE = 3;
+
+uint16_t COL_BODY = 0, COL_CHEEK = 0, COL_MOUTH = 0, COL_INNER = 0;
+
+M5Canvas canvas(&M5Cardputer.Display);
+
+uint16_t pixelColor(char ch) {
+    switch (ch) {
+        case 'B': return COL_BODY;
+        case 'W': return WHITE;
+        case 'M': return COL_MOUTH;
+        case 'C': return COL_CHEEK;
+        case 'E': return COL_INNER;
+        default:  return BLACK;
+    }
+}
+
+const char* dirLabel(Direction d) {
+    switch (d) {
+        case DIR_LEFT:  return "LEFT";
+        case DIR_RIGHT: return "RIGHT";
+        case DIR_UP:    return "UP";
+        case DIR_DOWN:  return "DOWN";
+        default:        return "";
+    }
+}
 
 // Map a human-readable key name (from config.json) to a BleKeyboard code.
 uint8_t parseKey(const char* name) {
@@ -139,39 +211,111 @@ bool loadConfig() {
     return true;
 }
 
-void drawUI() {
-    auto& d = M5Cardputer.Display;
-    d.fillScreen(BLACK);
+void drawScene() {
+    canvas.fillScreen(BLACK);
+    canvas.setTextSize(1);
 
-    d.setTextColor(WHITE);
-    d.setTextSize(2);
-    d.setCursor(5, 5);
-    d.print(config.deviceName);
+    // Header: device name (left) + BLE state (right)
+    canvas.setTextColor(WHITE);
+    canvas.setCursor(0, 1);
+    canvas.print(config.deviceName);
 
-    d.setTextSize(1);
-    d.setCursor(5, 32);
-    d.setTextColor(bleKeyboard && bleKeyboard->isConnected() ? GREEN : YELLOW);
-    d.printf("BLE: %s", (bleKeyboard && bleKeyboard->isConnected()) ? "CONNECTED" : "WAITING");
+    bool connected = bleKeyboard && bleKeyboard->isConnected();
+    const char* statusStr = connected ? "CONNECTED" : "WAITING";
+    const int ICON_W = 7;
+    const int ICON_PAD = 2;
+    int totalW = ICON_W + ICON_PAD + 6 * (int)strlen(statusStr);
+    int startX = 240 - totalW;
+    int cx = startX + ICON_W / 2;
+    int cy = 1 + 3;
+    uint16_t color = connected ? GREEN : YELLOW;
+    if (connected) {
+        canvas.fillCircle(cx, cy, 3, color);
+    } else {
+        canvas.drawCircle(cx, cy, 3, color);
+        canvas.drawLine(cx, cy, cx,     cy - 2, color);
+        canvas.drawLine(cx, cy, cx + 2, cy,     color);
+    }
+    canvas.setTextColor(color);
+    canvas.setCursor(startX + ICON_W + ICON_PAD, 1);
+    canvas.print(statusStr);
 
-    d.setTextColor(WHITE);
-    d.setCursor(5, 48);
-    d.printf("Config: %s", configStatus.c_str());
+    // Divider
+    canvas.drawFastHLine(0, 11, 240, DARKGREY);
 
-    d.setCursor(5, 64);
-    d.printf("Last: %s", lastKey.c_str());
+    // Hop offset on key press: 7 → 0 over ~320ms with quadratic ease-out
+    int offX = 0, offY = 0;
+    if (currentDir != DIR_NONE) {
+        uint32_t elapsed = millis() - pressTimeMs;
+        if (elapsed < 320) {
+            float t = elapsed / 320.0f;
+            float k = (1.0f - t) * (1.0f - t);
+            int mag = (int)(7 * k);
+            switch (currentDir) {
+                case DIR_LEFT:  offX = -mag; break;
+                case DIR_RIGHT: offX =  mag; break;
+                case DIR_UP:    offY = -mag; break;
+                case DIR_DOWN:  offY =  mag; break;
+                default: break;
+            }
+        }
+    }
 
-    d.setTextColor(DARKGREY);
-    d.setCursor(5, 100);
-    d.print(",  .  ;  /   =>  L  D  U  R");
-    d.setCursor(5, 114);
-    d.print("Edit " CONFIG_PATH " on SD");
+    // Idle breathing: 1 pixel up/down cycling ~1.4s
+    int bob = ((millis() / 700) & 1) ? -1 : 0;
+
+    // Render the critter centered in the animation area
+    const char** sprite = connected ? PET_HAPPY : PET_SAD;
+    const int renderW = PET_W * PET_SCALE;
+    const int renderH = PET_H * PET_SCALE;
+    const int CENTER_X = 120;
+    const int CENTER_Y = 72;
+    int spriteX = CENTER_X - renderW / 2 + offX;
+    int spriteY = CENTER_Y - renderH / 2 + offY + bob;
+
+    for (int row = 0; row < PET_H; row++) {
+        for (int col = 0; col < PET_W; col++) {
+            char ch = sprite[row][col];
+            if (ch == '.') continue;
+            canvas.fillRect(spriteX + col * PET_SCALE,
+                            spriteY + row * PET_SCALE,
+                            PET_SCALE, PET_SCALE, pixelColor(ch));
+        }
+    }
+
+    // Pupils follow the current direction (±1 inside the 3x3 eye white)
+    int dx = 0, dy = 0;
+    switch (currentDir) {
+        case DIR_LEFT:  dx = -1; break;
+        case DIR_RIGHT: dx =  1; break;
+        case DIR_UP:    dy = -1; break;
+        case DIR_DOWN:  dy =  1; break;
+        default: break;
+    }
+    canvas.fillRect(spriteX + (3 + dx) * PET_SCALE,
+                    spriteY + (6 + dy) * PET_SCALE,
+                    PET_SCALE, PET_SCALE, BLACK);
+    canvas.fillRect(spriteX + (11 + dx) * PET_SCALE,
+                    spriteY + (6 + dy) * PET_SCALE,
+                    PET_SCALE, PET_SCALE, BLACK);
+
+    // Footer: the currently selected key
+    const char* label = dirLabel(currentDir);
+    if (label[0]) {
+        canvas.setTextColor(DARKGREY);
+        int lx = (240 - 6 * (int)strlen(label)) / 2;
+        canvas.setCursor(lx, 126);
+        canvas.print(label);
+    }
+
+    canvas.pushSprite(0, 0);
 }
 
-void sendKey(uint8_t code, const char* label) {
+void sendKey(uint8_t code, Direction dir, const char* /*label*/) {
     if (!bleKeyboard || !bleKeyboard->isConnected() || code == 0) return;
     bleKeyboard->write(code);
-    lastKey = label;
-    drawUI();
+    currentDir = dir;
+    pressTimeMs = millis();
 }
 
 void setup() {
@@ -183,6 +327,13 @@ void setup() {
 
     loadConfig();
 
+    COL_BODY  = M5Cardputer.Display.color565(0xD8, 0xA2, 0x5C);
+    COL_CHEEK = M5Cardputer.Display.color565(0xFF, 0x9A, 0xB1);
+    COL_MOUTH = M5Cardputer.Display.color565(0x4A, 0x2A, 0x0A);
+    COL_INNER = COL_CHEEK;
+
+    canvas.createSprite(240, 135);
+
     bleKeyboard = new BleKeyboard(
         config.deviceName.c_str(),
         config.manufacturer.c_str(),
@@ -190,7 +341,7 @@ void setup() {
     );
     bleKeyboard->begin();
 
-    drawUI();
+    drawScene();
 }
 
 void loop() {
@@ -199,20 +350,26 @@ void loop() {
     bool nowConnected = bleKeyboard->isConnected();
     if (nowConnected != prevConnected) {
         prevConnected = nowConnected;
-        drawUI();
     }
 
     if (M5Cardputer.Keyboard.isChange() && M5Cardputer.Keyboard.isPressed()) {
         auto state = M5Cardputer.Keyboard.keysState();
         for (char c : state.word) {
             switch (c) {
-                case ',': sendKey(config.mapping.left,  "LEFT");  break;
-                case '.': sendKey(config.mapping.down,  "DOWN");  break;
-                case ';': sendKey(config.mapping.up,    "UP");    break;
-                case '/': sendKey(config.mapping.right, "RIGHT"); break;
+                case ',': sendKey(config.mapping.left,  DIR_LEFT,  "LEFT");  break;
+                case '.': sendKey(config.mapping.down,  DIR_DOWN,  "DOWN");  break;
+                case ';': sendKey(config.mapping.up,    DIR_UP,    "UP");    break;
+                case '/': sendKey(config.mapping.right, DIR_RIGHT, "RIGHT"); break;
             }
         }
     }
 
-    delay(10);
+    // Redraw at ~30fps for smooth hop + breathing animation
+    uint32_t now = millis();
+    if (now - lastDrawMs >= 33) {
+        lastDrawMs = now;
+        drawScene();
+    }
+
+    delay(5);
 }
