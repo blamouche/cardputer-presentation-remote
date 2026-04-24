@@ -369,7 +369,10 @@ void setup() {
     auto cfg = M5.config();
     M5Cardputer.begin(cfg, true);
     M5Cardputer.Display.setRotation(1);
-    M5Cardputer.Display.setBrightness(120);
+    // On Cardputer ADV the on-board RGB LED shares its power rail with
+    // the display backlight, so the backlight PWM level caps the LED's
+    // effective brightness. Keep the backlight maxed.
+    M5Cardputer.Display.setBrightness(255);
     Serial.begin(115200);
 
     loadConfig();
