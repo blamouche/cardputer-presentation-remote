@@ -16,7 +16,6 @@
 #undef KEY_ENTER
 
 #include <BleKeyboard.h>
-#include <FastLED.h>
 
 // SD pins on Cardputer (ADV uses the same pinout as the original)
 #define SD_SCK  40
@@ -56,8 +55,7 @@ Direction currentDir = DIR_NONE;
 uint32_t  pressTimeMs = 0;
 uint32_t  lastDrawMs  = 0;
 
-CRGB     leds[LED_NUM];
-CRGB     prevLedColor = CRGB::Black;
+uint8_t  prevLedR = 255, prevLedG = 255, prevLedB = 255; // force first push
 uint32_t ledFlashStartMs = 0;
 
 // 16x16 pixel-art critter. Two variants: happy (connected) and sad (waiting).
@@ -129,18 +127,21 @@ const char* dirLabel(Direction d) {
 }
 
 void updateLed() {
-    CRGB target;
+    uint8_t r, g, b;
     if (millis() - ledFlashStartMs < LED_FLASH_MS) {
-        target = CRGB::Blue;
+        r = 0;   g = 0;   b = 255; // blue on keypress
     } else if (bleKeyboard && bleKeyboard->isConnected()) {
-        target = CRGB::Green;
+        r = 0;   g = 255; b = 0;   // green
     } else {
-        target = CRGB::Red;
+        r = 255; g = 0;   b = 0;   // red
     }
-    if (target != prevLedColor) {
-        leds[0] = target;
-        FastLED.show();
-        prevLedColor = target;
+    // Scale by brightness to avoid eye strain at close range.
+    r = (uint16_t)r * LED_BRIGHTNESS / 255;
+    g = (uint16_t)g * LED_BRIGHTNESS / 255;
+    b = (uint16_t)b * LED_BRIGHTNESS / 255;
+    if (r != prevLedR || g != prevLedG || b != prevLedB) {
+        neopixelWrite(LED_PIN, r, g, b);
+        prevLedR = r; prevLedG = g; prevLedB = b;
     }
 }
 
@@ -370,11 +371,10 @@ void setup() {
 
     canvas.createSprite(240, 135);
 
-    FastLED.addLeds<WS2812B, LED_PIN, GRB>(leds, LED_NUM);
-    FastLED.setBrightness(LED_BRIGHTNESS);
-    leds[0] = CRGB::Red;
-    FastLED.show();
-    prevLedColor = CRGB::Red;
+    // Initial red while waiting for BLE connection. updateLed() will take
+    // over from the main loop — no explicit LED setup needed: neopixelWrite
+    // configures the RMT channel on its first call.
+    updateLed();
 
     bleKeyboard = new BleKeyboard(
         config.deviceName.c_str(),
