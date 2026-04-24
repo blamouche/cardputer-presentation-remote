@@ -1,45 +1,45 @@
 # Cardputer Presentation Remote
 
-Transforme une **M5Stack Cardputer** (ou Cardputer ADV) en télécommande Bluetooth pour présentations (Google Slides, PowerPoint, Keynote, etc.).
+Turn an **M5Stack Cardputer** (or Cardputer ADV) into a Bluetooth remote for slide presentations (Google Slides, PowerPoint, Keynote, etc.).
 
-La Cardputer se fait passer pour un clavier BLE HID standard, puis envoie des codes de touches configurables quand tu presses les touches fléchées de son clavier physique.
+The Cardputer advertises itself as a standard BLE HID keyboard and sends configurable key codes when you press the arrow keys on its physical keyboard.
 
-## Matériel
+## Hardware
 
-- M5Stack Cardputer ou Cardputer ADV (ESP32-S3)
-- Une carte micro-SD (optionnelle, pour personnaliser la config)
+- M5Stack Cardputer or Cardputer ADV (ESP32-S3)
+- A micro-SD card (optional, for config customization)
 
-## Mapping des touches
+## Key mapping
 
-Les quatre touches en bas à droite du clavier Cardputer servent de flèches :
+The four bottom-right keys of the Cardputer keyboard are used as arrows:
 
-| Touche physique | Action par défaut |
-|-----------------|-------------------|
-| `,`             | Flèche gauche     |
-| `.`             | Flèche bas        |
-| `;`             | Flèche haut       |
-| `/`             | Flèche droite     |
+| Physical key | Default action |
+|--------------|----------------|
+| `,`          | Left arrow     |
+| `.`          | Down arrow     |
+| `;`          | Up arrow       |
+| `/`          | Right arrow    |
 
-## Build et flash
+## Build and flash
 
-Le projet utilise [PlatformIO](https://platformio.org/).
+The project uses [PlatformIO](https://platformio.org/).
 
 ```bash
 pio run                 # build
-pio run -t upload       # flash via USB
+pio run -t upload       # flash over USB
 ```
 
-Un binaire mergé prêt à flasher (`firmware.bin`) est aussi généré à la racine du projet par le script `scripts/merge_bin.py`. Une version pré-buildée (`cardputer-presentation-remote.bin`) est aussi fournie dans le repo pour les utilisateurs qui veulent juste flasher sans installer PlatformIO :
+A ready-to-flash merged binary (`firmware.bin`) is also produced at the project root by `scripts/merge_bin.py`. A prebuilt binary (`cardputer-presentation-remote.bin`) is shipped in the repo for users who just want to flash without installing PlatformIO:
 
 ```bash
 esptool.py --chip esp32s3 --port /dev/cu.usbmodem* write_flash 0x0 cardputer-presentation-remote.bin
 ```
 
-## Configuration via carte SD
+## SD-card configuration
 
-Au premier démarrage, si une carte SD est insérée, le firmware crée un fichier `/cardputer-presentation-remote.json` à sa racine avec les valeurs par défaut. Tu peux l'éditer pour changer le nom BLE, le fabricant, ou le mapping des touches.
+On first boot, if an SD card is inserted, the firmware creates `/cardputer-presentation-remote.json` at its root with default values. Edit it to change the BLE device name, manufacturer, or key mapping.
 
-Exemple (`sd/cardputer-presentation-remote.json`) :
+Example (`sd/cardputer-presentation-remote.json`):
 
 ```json
 {
@@ -54,53 +54,63 @@ Exemple (`sd/cardputer-presentation-remote.json`) :
 }
 ```
 
-Valeurs acceptées pour chaque touche :
+Accepted values for each key:
 `LEFT_ARROW`, `RIGHT_ARROW`, `UP_ARROW`, `DOWN_ARROW`,
 `PAGE_UP`, `PAGE_DOWN`, `HOME`, `END`,
 `ESC`, `ENTER`, `TAB`, `SPACE`, `F5`,
-ou un caractère simple (par ex. `"a"`, `"b"`).
+or a single character (e.g. `"a"`, `"b"`).
 
-Astuce : pour Google Slides dans un navigateur, `PAGE_UP` / `PAGE_DOWN` sont souvent plus fiables que les flèches.
+Tip: for Google Slides in a browser, `PAGE_UP` / `PAGE_DOWN` are often more reliable than arrows.
 
-Le champ `Config:` affiché à l'écran indique l'état du chargement :
-- `loaded` — config SD lue avec succès
-- `created` — aucune config trouvée, fichier par défaut créé
-- `no SD` — pas de carte SD détectée, valeurs par défaut utilisées
-- `json err: ...` — JSON invalide
+The `Config:` field shown on screen indicates the load state:
+- `loaded` — SD config read successfully
+- `created` — no config found, default file written
+- `no SD` — no SD card detected, defaults used
+- `json err: ...` — invalid JSON
 
-## Utilisation
+## Usage
 
-1. Allume la Cardputer. L'écran affiche `BLE: WAITING`.
-2. Depuis l'OS, appaire le "Cardputer Remote" dans les réglages Bluetooth. Il doit être reconnu comme **clavier**.
-3. Une fois appairé, l'écran passe à `BLE: CONNECTED`.
-4. Ouvre ta présentation, passe-la en mode présentation, clique dedans pour lui donner le focus OS.
-5. Les quatre touches fléchées de la Cardputer font défiler les slides. Le champ `Last:` affiche la dernière touche envoyée.
+1. Power on the Cardputer. The screen shows `BLE: WAITING`.
+2. From the host OS, pair the "Cardputer Remote" in the Bluetooth settings. It must be recognized as a **keyboard**.
+3. Once paired, the screen switches to `BLE: CONNECTED`.
+4. Open your presentation, switch it to presentation mode, and click inside it to give it OS focus.
+5. The four arrow keys on the Cardputer now flip through the slides. The `Last:` field shows the most recently sent key.
 
-## Dépannage
+## Troubleshooting
 
-**La Cardputer dit `CONNECTED` mais les touches n'ont aucun effet sur la cible.**
+**The Cardputer shows `CONNECTED` but key presses have no effect on the target.**
 
-Causes classiques :
-- L'appairage s'est fait, mais pas en tant que clavier HID. Oublie l'appareil dans les réglages Bluetooth de l'OS et ré-appaire.
-- La fenêtre cible n'a pas le focus OS. Clique dedans avant de presser les touches.
-- Certaines apps web interceptent différemment les flèches — essaie `PAGE_UP` / `PAGE_DOWN` dans la config.
+Common causes:
+- Pairing completed, but not as an HID keyboard. Forget the device in your OS Bluetooth settings and re-pair.
+- The target window doesn't have OS focus. Click into it before pressing keys.
+- Some web apps intercept arrow keys differently — try `PAGE_UP` / `PAGE_DOWN` in the config.
 
-**Le champ `Last:` ne change pas quand je presse les touches.**
+**The `Last:` field doesn't change when I press keys.**
 
-La Cardputer ne capte pas les appuis. Vérifie que tu presses bien les touches `,` `.` `;` `/` (rangées du bas à droite du clavier).
+The Cardputer isn't registering the presses. Make sure you're pressing `,` `.` `;` `/` (the bottom-right cluster of the keyboard).
 
-## Stack BLE
+## BLE stack
 
-Le projet utilise le fork NimBLE [`wakwak-koba/ESP32-NimBLE-Keyboard`](https://github.com/wakwak-koba/ESP32-NimBLE-Keyboard). Le fork T-vK d'origine (Bluedroid) ne finalise pas correctement le pairing HID avec les versions récentes d'arduino-esp32 sur ESP32-S3 — la connexion s'établit mais aucun rapport clavier n'est accepté par l'hôte.
+The project uses the NimBLE fork [`wakwak-koba/ESP32-NimBLE-Keyboard`](https://github.com/wakwak-koba/ESP32-NimBLE-Keyboard). The original T-vK fork (Bluedroid) doesn't finalize HID pairing correctly with recent arduino-esp32 versions on ESP32-S3 — the connection is established but the host ignores every keyboard report.
 
-Au moment de l'écriture, le header `BleKeyboard.h` du fork NimBLE oublie un `#include <functional>`. Si la compilation échoue avec `'std::function' does not name a template type`, ajoute manuellement cet include en haut de `.pio/libdeps/cardputer-adv/ESP32 BLE Keyboard/src/BleKeyboard.h`.
+At the time of writing, the NimBLE fork's `BleKeyboard.h` is missing `#include <functional>`. If compilation fails with `'std::function' does not name a template type`, add that include manually at the top of `.pio/libdeps/cardputer-adv/ESP32 BLE Keyboard/src/BleKeyboard.h`. The CI workflow (`.github/workflows/release.yml`) applies this patch automatically.
 
-## Structure du projet
+## Releases
+
+Pushing a tag triggers the release workflow which builds the firmware and publishes a GitHub release with `presentation-remote-<TAG>.bin` attached:
+
+```bash
+git tag v1.0
+git push --tags
+```
+
+## Project structure
 
 ```
-├── platformio.ini                       # config PlatformIO + lib_deps
-├── src/main.cpp                         # firmware
-├── scripts/merge_bin.py                 # merge bootloader+partitions+app en un seul .bin
-├── sd/cardputer-presentation-remote.json  # exemple de config à placer sur la carte SD
-└── cardputer-presentation-remote.bin    # binaire pré-buildé prêt à flasher
+├── platformio.ini                          # PlatformIO config + lib_deps
+├── src/main.cpp                            # firmware source
+├── scripts/merge_bin.py                    # merges bootloader+partitions+app into a single .bin
+├── sd/cardputer-presentation-remote.json   # sample config to drop on the SD card
+├── .github/workflows/release.yml           # tag-triggered build + GitHub release
+└── cardputer-presentation-remote.bin       # prebuilt ready-to-flash binary
 ```
