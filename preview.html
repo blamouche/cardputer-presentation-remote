@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Slides Remote — UI preview</title>
+<style>
+  body {
+    margin: 0;
+    padding: 24px;
+    background: #1e1e1e;
+    color: #ddd;
+    font-family: system-ui, -apple-system, sans-serif;
+    display: flex;
+    gap: 32px;
+    flex-wrap: wrap;
+  }
+  h1 { font-size: 16px; font-weight: 600; margin: 0 0 12px; color: #aaa; }
+  .stage {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  canvas {
+    image-rendering: pixelated;
+    background: #000;
+    border: 2px solid #333;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  }
+  .meta { font-size: 11px; color: #666; }
+  .controls {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-width: 260px;
+  }
+  .controls label {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 12px;
+    color: #999;
+  }
+  .controls input[type="text"], .controls select {
+    background: #111;
+    color: #eee;
+    border: 1px solid #333;
+    padding: 6px 8px;
+    border-radius: 4px;
+    font: inherit;
+  }
+  .row { display: flex; gap: 12px; }
+  .row > label { flex: 1; }
+  button {
+    background: #2a2a2a;
+    color: #ddd;
+    border: 1px solid #444;
+    padding: 8px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font: inherit;
+  }
+  button:hover { background: #333; }
+  kbd {
+    background: #111;
+    border: 1px solid #444;
+    border-radius: 3px;
+    padding: 1px 5px;
+    font-size: 11px;
+    font-family: ui-monospace, monospace;
+  }
+</style>
+</head>
+<body>
+  <div class="stage">
+    <h1>Slides Remote — UI preview (240×135, 3×)</h1>
+    <canvas id="screen" width="720" height="405"></canvas>
+    <div class="meta">
+      Approximates <code>drawUI()</code> in <code>src/main.cpp</code>. Click the
+      canvas or press <kbd>,</kbd> <kbd>.</kbd> <kbd>;</kbd> <kbd>/</kbd> to
+      simulate key presses.
+    </div>
+  </div>
+
+  <div class="controls">
+    <h1>State</h1>
+
+    <label>Device name
+      <input type="text" id="deviceName" value="Slides Remote" />
+    </label>
+
+    <label>BLE state
+      <select id="bleState">
+        <option value="CONNECTED">CONNECTED</option>
+        <option value="WAITING" selected>WAITING</option>
+      </select>
+    </label>
+
+    <label>Config status
+      <select id="configStatus">
+        <option value="loaded">loaded</option>
+        <option value="created">created</option>
+        <option value="no SD">no SD</option>
+        <option value="defaults" selected>defaults</option>
+        <option value="json err: IncompleteInput">json err: IncompleteInput</option>
+      </select>
+    </label>
+
+    <label>Last key
+      <select id="lastKey">
+        <option value="-" selected>-</option>
+        <option value="LEFT">LEFT</option>
+        <option value="RIGHT">RIGHT</option>
+        <option value="UP">UP</option>
+        <option value="DOWN">DOWN</option>
+      </select>
+    </label>
+
+    <div class="row">
+      <button id="connectBtn">Toggle BLE</button>
+      <button id="resetBtn">Reset</button>
+    </div>
+  </div>
+
+<script>
+// Mirrors the relevant subset of M5GFX/Adafruit GFX drawing calls used by
+// drawUI() in src/main.cpp. Renders into a 3x-scaled 240x135 canvas.
+
+const SCALE = 3;
+const NATIVE_W = 240;
+const NATIVE_H = 135;
+
+const COLORS = {
+  BLACK:    "#000000",
+  WHITE:    "#ffffff",
+  GREEN:    "#00fc00",
+  YELLOW:   "#ffe000",
+  DARKGREY: "#787878",
+};
+
+class Screen {
+  constructor(canvas) {
+    this.canvas = canvas;
+    this.ctx = canvas.getContext("2d");
+    this.ctx.imageSmoothingEnabled = false;
+    this.ctx.scale(SCALE, SCALE);
+    this.reset();
+  }
+  reset() {
+    this.cursorX = 0;
+    this.cursorY = 0;
+    this.textSize = 1;
+    this.color = COLORS.WHITE;
+  }
+  fillScreen(c) {
+    this.ctx.fillStyle = c;
+    this.ctx.fillRect(0, 0, NATIVE_W, NATIVE_H);
+    this.reset();
+  }
+  setCursor(x, y) { this.cursorX = x; this.cursorY = y; }
+  setTextSize(s) { this.textSize = s; }
+  setTextColor(c) { this.color = c; }
+  print(str) {
+    // GFX classic font: 5x7 glyphs inside a 6x8 cell (with 1px spacing).
+    // We render a close-enough monospace approximation.
+    const cellW = 6 * this.textSize;
+    const cellH = 8 * this.textSize;
+    const fontPx = 7 * this.textSize; // slightly under cell height for baseline
+    this.ctx.fillStyle = this.color;
+    this.ctx.textBaseline = "top";
+    this.ctx.font = `${fontPx}px ui-monospace, "SF Mono", "Menlo", "Consolas", monospace`;
+    for (const ch of String(str)) {
+      if (ch === "\n") {
+        this.cursorX = 0;
+        this.cursorY += cellH;
+        continue;
+      }
+      this.ctx.fillText(ch, this.cursorX, this.cursorY);
+      this.cursorX += cellW;
+    }
+  }
+}
+
+const canvas = document.getElementById("screen");
+const screen = new Screen(canvas);
+
+const state = {
+  deviceName: "Slides Remote",
+  connected: false,
+  configStatus: "defaults",
+  lastKey: "-",
+};
+
+const CONFIG_PATH = "/cardputer-presentation-remote.json";
+
+function drawUI() {
+  const d = screen;
+  d.fillScreen(COLORS.BLACK);
+
+  d.setTextColor(COLORS.WHITE);
+  d.setTextSize(2);
+  d.setCursor(5, 5);
+  d.print(state.deviceName);
+
+  d.setTextSize(1);
+  d.setCursor(5, 32);
+  d.setTextColor(state.connected ? COLORS.GREEN : COLORS.YELLOW);
+  d.print(`BLE: ${state.connected ? "CONNECTED" : "WAITING"}`);
+
+  d.setTextColor(COLORS.WHITE);
+  d.setCursor(5, 48);
+  d.print(`Config: ${state.configStatus}`);
+
+  d.setCursor(5, 64);
+  d.print(`Last: ${state.lastKey}`);
+
+  d.setTextColor(COLORS.DARKGREY);
+  d.setCursor(5, 100);
+  d.print(",  .  ;  /   =>  L  D  U  R");
+  d.setCursor(5, 114);
+  d.print(`Edit ${CONFIG_PATH} on SD`);
+}
+
+// Controls
+const $ = (id) => document.getElementById(id);
+
+$("deviceName").addEventListener("input", (e) => {
+  state.deviceName = e.target.value;
+  drawUI();
+});
+
+$("bleState").addEventListener("change", (e) => {
+  state.connected = e.target.value === "CONNECTED";
+  drawUI();
+});
+
+$("configStatus").addEventListener("change", (e) => {
+  state.configStatus = e.target.value;
+  drawUI();
+});
+
+$("lastKey").addEventListener("change", (e) => {
+  state.lastKey = e.target.value;
+  drawUI();
+});
+
+$("connectBtn").addEventListener("click", () => {
+  state.connected = !state.connected;
+  $("bleState").value = state.connected ? "CONNECTED" : "WAITING";
+  drawUI();
+});
+
+$("resetBtn").addEventListener("click", () => {
+  state.deviceName = "Slides Remote";
+  state.connected = false;
+  state.configStatus = "defaults";
+  state.lastKey = "-";
+  $("deviceName").value = state.deviceName;
+  $("bleState").value = "WAITING";
+  $("configStatus").value = "defaults";
+  $("lastKey").value = "-";
+  drawUI();
+});
+
+// Keyboard shortcut: , . ; /  simulate a key press (same mapping as firmware)
+const keyMap = { ",": "LEFT", ".": "DOWN", ";": "UP", "/": "RIGHT" };
+window.addEventListener("keydown", (e) => {
+  if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT") return;
+  const label = keyMap[e.key];
+  if (!label) return;
+  state.lastKey = label;
+  $("lastKey").value = label;
+  drawUI();
+});
+
+drawUI();
+</script>
+</body>
+</html>
