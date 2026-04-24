@@ -26,8 +26,9 @@
 // On-board WS2812 RGB LED
 #define LED_PIN        21
 #define LED_NUM        1
-#define LED_BRIGHTNESS 40
+#define LED_BRIGHTNESS 200
 #define LED_FLASH_MS   180
+#define LED_REFRESH_MS 100
 
 #define CONFIG_PATH "/cardputer-presentation-remote.json"
 
@@ -55,8 +56,8 @@ Direction currentDir = DIR_NONE;
 uint32_t  pressTimeMs = 0;
 uint32_t  lastDrawMs  = 0;
 
-uint8_t  prevLedR = 255, prevLedG = 255, prevLedB = 255; // force first push
 uint32_t ledFlashStartMs = 0;
+uint32_t lastLedRefreshMs = 0;
 
 // 16x16 pixel-art critter. Two variants: happy (connected) and sad (waiting).
 // Letters map to colors via pixelColor():
@@ -127,22 +128,25 @@ const char* dirLabel(Direction d) {
 }
 
 void updateLed() {
+    uint32_t now = millis();
+    // Refresh periodically even when the target color hasn't changed: the
+    // WS2812 signal can be clobbered by nearby BLE/RMT activity, leaving
+    // the LED dark until the next explicit write.
+    if (now - lastLedRefreshMs < LED_REFRESH_MS) return;
+    lastLedRefreshMs = now;
+
     uint8_t r, g, b;
-    if (millis() - ledFlashStartMs < LED_FLASH_MS) {
+    if (now - ledFlashStartMs < LED_FLASH_MS) {
         r = 0;   g = 0;   b = 255; // blue on keypress
     } else if (bleKeyboard && bleKeyboard->isConnected()) {
         r = 0;   g = 255; b = 0;   // green
     } else {
         r = 255; g = 0;   b = 0;   // red
     }
-    // Scale by brightness to avoid eye strain at close range.
     r = (uint16_t)r * LED_BRIGHTNESS / 255;
     g = (uint16_t)g * LED_BRIGHTNESS / 255;
     b = (uint16_t)b * LED_BRIGHTNESS / 255;
-    if (r != prevLedR || g != prevLedG || b != prevLedB) {
-        neopixelWrite(LED_PIN, r, g, b);
-        prevLedR = r; prevLedG = g; prevLedB = b;
-    }
+    neopixelWrite(LED_PIN, r, g, b);
 }
 
 // Map a human-readable key name (from config.json) to a BleKeyboard code.
