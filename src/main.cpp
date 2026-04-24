@@ -67,7 +67,7 @@ uint8_t parseKey(const char* name) {
 }
 
 void applyDefaults() {
-    config.deviceName   = "Cardputer Remote";
+    config.deviceName   = "Slides Remote";
     config.manufacturer = "M5Stack";
     config.batteryLevel = 100;
     config.mapping.left  = KEY_LEFT_ARROW;

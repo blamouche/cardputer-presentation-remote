@@ -47,7 +47,7 @@ Example (`sd/cardputer-presentation-remote.json`):
 
 ```json
 {
-  "device_name": "Cardputer Remote",
+  "device_name": "Slides Remote",
   "manufacturer": "M5Stack",
   "keys": {
     "left":  "LEFT_ARROW",
@@ -75,7 +75,7 @@ The `Config:` field shown on screen indicates the load state:
 ## Usage
 
 1. Power on the Cardputer. The screen shows `BLE: WAITING`.
-2. From the host OS, pair the "Cardputer Remote" in the Bluetooth settings. It must be recognized as a **keyboard**.
+2. From the host OS, pair the "Slides Remote" in the Bluetooth settings. It must be recognized as a **keyboard**.
 3. Once paired, the screen switches to `BLE: CONNECTED`.
 4. Open your presentation, switch it to presentation mode, and click inside it to give it OS focus.
 5. The four arrow keys on the Cardputer now flip through the slides. The `Last:` field shows the most recently sent key.
