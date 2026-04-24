@@ -43,11 +43,11 @@ jobs:
         run: pio run -e cardputer-adv
 
       - name: Rename artifact with tag version
-        run: mv firmware.bin "presentation-remote ${{ github.ref_name }}.bin"
+        run: mv firmware.bin "presentation-remote-${{ github.ref_name }}.bin"
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            presentation-remote ${{ github.ref_name }}.bin
+            presentation-remote-${{ github.ref_name }}.bin
           generate_release_notes: true
