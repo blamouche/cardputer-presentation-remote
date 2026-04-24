@@ -313,7 +313,15 @@ void drawScene() {
 
 void sendKey(uint8_t code, Direction dir, const char* /*label*/) {
     if (!bleKeyboard || !bleKeyboard->isConnected() || code == 0) return;
-    bleKeyboard->write(code);
+    // write() does press+release back-to-back which can leave phantom
+    // modifier bits stuck on BLE hosts (macOS sees Ctrl-held → trackpad
+    // clicks become secondary clicks; browsers see Cmd+Arrow → jump to
+    // end of document). Explicit press/release with a small gap plus a
+    // defensive releaseAll() clears the HID report reliably.
+    bleKeyboard->press(code);
+    delay(10);
+    bleKeyboard->release(code);
+    bleKeyboard->releaseAll();
     currentDir = dir;
     pressTimeMs = millis();
 }
