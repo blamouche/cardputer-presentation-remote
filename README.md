@@ -1,5 +1,7 @@
 # Cardputer Presentation Remote
 
+![Cardputer running Slides Remote](img/remote.png)
+
 Turn an **M5Stack Cardputer** (or Cardputer ADV) into a Bluetooth remote for slide presentations (Google Slides, PowerPoint, Keynote, etc.).
 
 The Cardputer advertises itself as a standard BLE HID keyboard and sends configurable key codes when you press the arrow keys on its physical keyboard.
